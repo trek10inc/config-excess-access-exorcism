@@ -1,0 +1,12 @@
+{
+  "Version": "1.0",
+  "Parameters": {
+    "RuleName": "IAM_ALLOWS_UNUSED_SERVICES",
+    "SourceRuntime": "python3.6",
+    "CodeKey": "IAM_ALLOWS_UNUSED_SERVICES.zip",
+    "InputParameters": "{}",
+    "OptionalParameters": "{}",
+    "SourceEvents": "AWS::IAM::Role,AWS::IAM::User,AWS::IAM::Group",
+    "SourcePeriodic": "TwentyFour_Hours"
+  }
+}
