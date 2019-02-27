@@ -1,22 +1,7 @@
-# Copyright 2017-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"). You may
-# not use this file except in compliance with the License. A copy of the License is located at
-#
-#        http://aws.amazon.com/apache2.0/
-#
-# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for
-# the specific language governing permissions and limitations under the License.
-
 import json
 import datetime
 import boto3
 import botocore
-
-##############
-# Parameters #
-##############
 
 # Define the default resource to report to Config Rules
 DEFAULT_RESOURCE_TYPE = 'AWS::::Account'
@@ -24,9 +9,6 @@ DEFAULT_RESOURCE_TYPE = 'AWS::::Account'
 # Set to True to get the lambda to assume the Role attached on the Config Service (useful for cross-account).
 ASSUME_ROLE_MODE = False
 
-#############
-# Main Code #
-#############
 
 def evaluate_compliance(event, configuration_item, valid_rule_parameters):
     import iam_rule_helpers
@@ -40,6 +22,7 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
         annotation=annotation
     )
 
+
 def evaluate_parameters(rule_parameters):
     """Evaluate the rule parameters dictionary validity. Raise a ValueError for invalid parameters.
 
@@ -52,9 +35,6 @@ def evaluate_parameters(rule_parameters):
     valid_rule_parameters = rule_parameters
     return valid_rule_parameters
 
-####################
-# Helper Functions #
-####################
 
 # Build an error to be displayed in the logs when the parameter is invalid.
 def build_parameters_value_error_response(ex):
@@ -67,6 +47,7 @@ def build_parameters_value_error_response(ex):
                                  internalErrorDetails="An ValueError was raised during the validation of the Parameter value",
                                  customerErrorCode="InvalidParameterValueException",
                                  customerErrorMessage=str(ex))
+
 
 # This gets the client after assuming the Config service role
 # either in the same AWS account or cross-account.
@@ -84,6 +65,7 @@ def get_client(service, event):
                         aws_secret_access_key=credentials['SecretAccessKey'],
                         aws_session_token=credentials['SessionToken']
                        )
+
 
 # This generate an evaluation for config
 def build_evaluation(resource_id, compliance_type, event, resource_type=DEFAULT_RESOURCE_TYPE, annotation=None):
@@ -105,6 +87,7 @@ def build_evaluation(resource_id, compliance_type, event, resource_type=DEFAULT_
     eval_cc['OrderingTimestamp'] = str(json.loads(event['invokingEvent'])['notificationCreationTime'])
     return eval_cc
 
+
 def build_evaluation_from_config_item(configuration_item, compliance_type, annotation=None):
     """Form an evaluation as a dictionary. Usually suited to report on configuration change rules.
 
@@ -122,9 +105,6 @@ def build_evaluation_from_config_item(configuration_item, compliance_type, annot
     eval_ci['OrderingTimestamp'] = configuration_item['configurationItemCaptureTime']
     return eval_ci
 
-####################
-# Boilerplate Code #
-####################
 
 # Helper function used to validate input
 def check_defined(reference, reference_name):
@@ -132,15 +112,18 @@ def check_defined(reference, reference_name):
         raise Exception('Error: ', reference_name, 'is not defined')
     return reference
 
+
 # Check whether the message is OversizedConfigurationItemChangeNotification or not
 def is_oversized_changed_notification(message_type):
     check_defined(message_type, 'messageType')
     return message_type == 'OversizedConfigurationItemChangeNotification'
 
+
 # Check whether the message is a ScheduledNotification or not.
 def is_scheduled_notification(message_type):
     check_defined(message_type, 'messageType')
     return message_type == 'ScheduledNotification'
+
 
 # Get configurationItem using getResourceConfigHistory API
 # in case of OversizedConfigurationItemChangeNotification
@@ -152,6 +135,7 @@ def get_configuration(resource_type, resource_id, configuration_capture_time):
         limit=1)
     configurationItem = result['configurationItems'][0]
     return convert_api_configuration(configurationItem)
+
 
 # Convert from the API model to the original invocation model
 def convert_api_configuration(configurationItem):
@@ -180,8 +164,11 @@ def get_configuration_item(invokingEvent):
         return None
     return check_defined(invokingEvent['configurationItem'], 'configurationItem')
 
-# Check whether the resource has been deleted. If it has, then the evaluation is unnecessary.
+
+# Check whether the resource has been deleted. If it has, then the evaluation is unnecessary. Also check for trek10 roles.
 def is_applicable(configurationItem, event):
+    if configuration_item['configuration']['arn'].split(':')[-1].startswith('role/trek10-'):
+        return False # skip trek10 roles
     try:
         check_defined(configurationItem, 'configurationItem')
         check_defined(event, 'event')
@@ -192,6 +179,7 @@ def is_applicable(configurationItem, event):
     if status == 'ResourceDeleted':
         print("Resource Deleted, setting Compliance Status to NOT_APPLICABLE.")
     return (status == 'OK' or status == 'ResourceDiscovered') and not eventLeftScope
+
 
 def get_assume_role_credentials(role_arn):
     sts_client = boto3.client('sts')
@@ -207,6 +195,7 @@ def get_assume_role_credentials(role_arn):
             ex.response['Error']['Message'] = "InternalError"
             ex.response['Error']['Code'] = "InternalError"
         raise ex
+
 
 # This removes older evaluation (usually useful for periodic rule not reporting on AWS::::Account).
 def clean_up_old_evaluations(latest_evaluations, event):
@@ -244,6 +233,7 @@ def clean_up_old_evaluations(latest_evaluations, event):
 
     return cleaned_evaluations + latest_evaluations
 
+
 # This decorates the lambda_handler in rule_code with the actual PutEvaluation call
 def lambda_handler(event, context):
 
@@ -266,7 +256,7 @@ def lambda_handler(event, context):
         if invoking_event['messageType'] in ['ConfigurationItemChangeNotification', 'ScheduledNotification', 'OversizedConfigurationItemChangeNotification']:
             configuration_item = get_configuration_item(invoking_event)
             if is_applicable(configuration_item, event):
-                compliance_result = evaluate_compliance(event, configuration_item, valid_rule_parameters)
+                compliance_result = evaluate_compliance(event, T, valid_rule_parameters)
             else:
                 compliance_result = "NOT_APPLICABLE"
         else:
@@ -322,12 +312,15 @@ def lambda_handler(event, context):
     # Used solely for RDK test to be able to test Lambda function
     return evaluations
 
+
 def is_internal_error(exception):
     return ((not isinstance(exception, botocore.exceptions.ClientError)) or exception.response['Error']['Code'].startswith('5')
             or 'InternalError' in exception.response['Error']['Code'] or 'ServiceError' in exception.response['Error']['Code'])
 
+
 def build_internal_error_response(internalErrorMessage, internalErrorDetails=None):
     return build_error_response(internalErrorMessage, internalErrorDetails, 'InternalError', 'InternalError')
+
 
 def build_error_response(internalErrorMessage, internalErrorDetails=None, customerErrorCode=None, customerErrorMessage=None):
     error_response = {

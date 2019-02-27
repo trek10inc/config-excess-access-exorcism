@@ -1,4 +1,3 @@
-import time
 '''
 # Usage example - inject this evaluate_complance function into the `rdk` default rule
 def evaluate_compliance(event, configuration_item, valid_rule_parameters):
@@ -13,38 +12,40 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
         annotation=annotation
     )
 '''
+
+
+import time
+
+
 def never_accessed_services_check(iam, arn):
     service_results = get_iam_last_access_details(iam, arn)
     never_accessed = [
-        x for x in service_results
-        if 'LastAuthenticated' not in x
+        x for x in service_results if 'LastAuthenticated' not in x
     ]
     if len(never_accessed) > 0:
         return (
             'NON_COMPLIANT',
-            "Services " + ', '.join(f"'{x['ServiceNamespace']}'" for x in never_accessed) + " have never been accessed",
+            'Services ' + ', '.join(f"'{x['ServiceNamespace']}'" for x in never_accessed) + ' have never been accessed',
         )
-
     return 'COMPLIANT', 'IAM entity has accessed all allowed services'
+
 
 def no_access_in_180_days_check(iam, arn):
     import pytz
-
     service_results = get_iam_last_access_details(iam, arn)
-
     utc_now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-
     older_than_180_days = [
         x for x in service_results
-        if 'LastAuthenticated' in x and (utc_now - x['LastAuthenticated']) > datetime.timedelta(days=180)
+        if 'LastAuthenticated' in x and
+        (utc_now - x['LastAuthenticated']) > datetime.timedelta(days=180)
     ]
     if len(older_than_180_days) > 0:
         return (
             'NON_COMPLIANT',
-            "Services " + ', '.join(f"'{x['ServiceNamespace']}'" for x in never_accessed) + " have not been accessed in the last 180 days",
+            'Services ' + ', '.join(f"'{x['ServiceNamespace']}'" for x in never_accessed) + ' have not been accessed in the last 180 days',
         )
-
     return 'COMPLIANT', 'IAM entity has accessed all allowed services in the last 180 days'
+
 
 def get_iam_last_access_details(iam, arn):
     '''Retrieves IAM last accessed details for the given user/group/role ARN'''
@@ -64,6 +65,7 @@ def get_iam_last_access_details(iam, arn):
             break
         time.sleep(5)
     return service_results
+
 
 def paginate_access_details(job_id, result):
     more_data, marker = result['IsTruncated'], result.get('Marker')
