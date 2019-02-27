@@ -1,13 +1,32 @@
+# Copyright 2017-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may
+# not use this file except in compliance with the License. A copy of the License is located at
+#
+#        http://aws.amazon.com/apache2.0/
+#
+# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for
+# the specific language governing permissions and limitations under the License.
+
 import json
 import datetime
 import boto3
 import botocore
+
+##############
+# Parameters #
+##############
 
 # Define the default resource to report to Config Rules
 DEFAULT_RESOURCE_TYPE = 'AWS::::Account'
 
 # Set to True to get the lambda to assume the Role attached on the Config Service (useful for cross-account).
 ASSUME_ROLE_MODE = False
+
+#############
+# Main Code #
+#############
 
 
 def evaluate_compliance(event, configuration_item, valid_rule_parameters):
@@ -34,6 +53,10 @@ def evaluate_parameters(rule_parameters):
     """
     valid_rule_parameters = rule_parameters
     return valid_rule_parameters
+
+####################
+# Helper Functions #
+####################
 
 
 # Build an error to be displayed in the logs when the parameter is invalid.
@@ -63,7 +86,7 @@ def get_client(service, event):
     credentials = get_assume_role_credentials(event["executionRoleArn"])
     return boto3.client(service, aws_access_key_id=credentials['AccessKeyId'],
                         aws_secret_access_key=credentials['SecretAccessKey'],
-                        aws_session_token=credentials['SessionToken']
+                        aws_session_token=credentials['SessionToken'],
                        )
 
 
@@ -104,6 +127,10 @@ def build_evaluation_from_config_item(configuration_item, compliance_type, annot
     eval_ci['ComplianceType'] = compliance_type
     eval_ci['OrderingTimestamp'] = configuration_item['configurationItemCaptureTime']
     return eval_ci
+
+####################
+# Boilerplate Code #
+####################
 
 
 # Helper function used to validate input
@@ -152,6 +179,7 @@ def convert_api_configuration(configurationItem):
             configurationItem['relationships'][i]['name'] = configurationItem['relationships'][i]['relationshipName']
     return configurationItem
 
+
 # Based on the type of message get the configuration item
 # either from configurationItem in the invoking event
 # or using the getResourceConfigHistiry API in getConfiguration function.
@@ -165,15 +193,15 @@ def get_configuration_item(invokingEvent):
     return check_defined(invokingEvent['configurationItem'], 'configurationItem')
 
 
-# Check whether the resource has been deleted. If it has, then the evaluation is unnecessary. Also check for trek10 roles.
+# Check whether the resource has been deleted. If it has, then the evaluation is unnecessary.
 def is_applicable(configurationItem, event):
-    if configuration_item['configuration']['arn'].split(':')[-1].startswith('role/trek10-'):
-        return False # skip trek10 roles
     try:
         check_defined(configurationItem, 'configurationItem')
         check_defined(event, 'event')
     except:
-        return True
+        return False
+    if configurationItem['configuration']['arn'].split(':')[-1].startswith('role/trek10-'):
+        return False # trek10 roles aren't applicable
     status = configurationItem['configurationItemStatus']
     eventLeftScope = event['eventLeftScope']
     if status == 'ResourceDeleted':
@@ -256,7 +284,7 @@ def lambda_handler(event, context):
         if invoking_event['messageType'] in ['ConfigurationItemChangeNotification', 'ScheduledNotification', 'OversizedConfigurationItemChangeNotification']:
             configuration_item = get_configuration_item(invoking_event)
             if is_applicable(configuration_item, event):
-                compliance_result = evaluate_compliance(event, T, valid_rule_parameters)
+                compliance_result = evaluate_compliance(event, configuration_item, valid_rule_parameters)
             else:
                 compliance_result = "NOT_APPLICABLE"
         else:
@@ -329,5 +357,5 @@ def build_error_response(internalErrorMessage, internalErrorDetails=None, custom
         'customerErrorMessage': customerErrorMessage,
         'customerErrorCode': customerErrorCode
     }
-    print(error_response)
+    print(f'Error: {json.dumps(error_response, default=str)}')
     return error_response
