@@ -22,10 +22,23 @@ def never_accessed_services_check(iam, arn):
         x for x in service_results
         if 'LastAuthenticated' not in x
     ]
-    if len(never_accessed) > 0:
+
+    if len(never_accessed) == 0:
+        return 'COMPLIANT', 'IAM entity has accessed all allowed services'
+
+    policies_by_service = iam.list_policies_granting_service_access(
+        Arn=arn, ServiceNamespaces=[s['ServiceNamespace'] for s in never_accessed]
+    )['PoliciesGrantingServiceAccess']
+
+    never_accessed_and_not_readonly = [
+        g for g in policies_by_service
+        if not all(p['PolicyName'] == 'ReadOnlyAccess' for p in g['Policies'])
+    ]
+
+    if len(never_accessed_and_not_readonly) > 0:
         return (
             'NON_COMPLIANT',
-            "Services " + ', '.join(x['ServiceNamespace'] for x in never_accessed)[:220] + " have never been accessed"
+            "Services " + ', '.join(x['ServiceNamespace'] for x in never_accessed_and_not_readonly)[:220] + " have never been accessed"
         )
 
     return 'COMPLIANT', 'IAM entity has accessed all allowed services'
